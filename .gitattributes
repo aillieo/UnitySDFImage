@@ -1,0 +1,11 @@
+*.cs text diff=csharp
+*.shader text
+*.txt text
+*.mat text
+*.shader text
+*.cginc text
+*.meta text
+*.compute text
+*.md text
+*.prefab text
+*/ProjectSettings/*.asset text

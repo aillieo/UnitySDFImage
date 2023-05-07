@@ -1,0 +1,51 @@
+# =============== #
+# Unity generated #
+# =============== #
+/Temp/
+/Library/
+
+[Oo]bj/
+[Ll]ogs/
+
+# ===================================== #
+# Visual Studio / MonoDevelop generated #
+# ===================================== #
+/*/ExportedObj/
+/*/obj/
+*.svd
+*.userprefs
+/*.csproj
+*.pidb
+*.suo
+/*.sln
+*.user
+*.unityproj
+*.booproj
+.vs/
+.vsconfig
+ 
+# ============ #
+# OS generated #
+# ============ #
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ===== #
+# Rider #
+# ===== #
+.idea/
+
+# ================== #
+# Visual Studio Code #
+# ================== #
+.vscode/
+
+# ==================== #
+# Editor user settings #
+# ==================== #
+/[Uu]serSettings/EditorUserSettings.asset
