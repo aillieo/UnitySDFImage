@@ -1,31 +1,86 @@
 namespace AillieoUtils.UI.SDFImage
 {
-    using UnityEngine.UI;
+    using System;
+    using System.Collections.Generic;
+    using UnityEngine;
 
-    public class UISDFElement : Graphic
+    [ExecuteAlways]
+    [RequireComponent(typeof(RectTransform))]
+    public class UISDFElement : MonoBehaviour
     {
-        // todo shape : circle, rect, triangle
+        public SDFOperation operation;
+
+        public Shape shape;
+
+        internal bool isNotifyingParentDirty;
 
         public enum SDFOperation
         {
             Union,
             Intersection,
-            Subtraction
+            Subtraction,
+            ShapeBlending,
         }
 
-        public float radius = 0.5f;
-        public SDFOperation operation = SDFOperation.Union;
-
-        protected override void OnPopulateMesh(VertexHelper vh)
+        public enum Shape
         {
-            vh.Clear();
+            Circle,
         }
 
-        public override bool raycastTarget
+        internal void PopulateSDFData(List<float> buffer)
         {
-            get
+            switch (this.shape)
             {
-                return false;
+                case Shape.Circle:
+                    if (this.transform.parent == null)
+                    {
+                        throw new InvalidOperationException();
+                    }
+
+                    Transform trans = this.transform;
+                    RectTransform rect = trans as RectTransform;
+                    RectTransform parent = trans.parent as RectTransform;
+                    var bounds = RectTransformUtils.CalculateNormalizedRelativeRectTransformBounds(parent, rect);
+                    buffer.Add(bounds.center.x);
+                    buffer.Add(bounds.center.y);
+                    buffer.Add(bounds.size.x);
+                    buffer.Add(bounds.size.y);
+                    buffer.Add((int)this.operation);
+                    break;
+            }
+        }
+
+        private void OnTransformParentChanged()
+        {
+            this.NotifyOldParentDirty();
+            this.NotifyNewParentDirty();
+        }
+
+        private void OnEnable()
+        {
+            this.NotifyNewParentDirty();
+        }
+
+        private void OnDisable()
+        {
+            this.NotifyOldParentDirty();
+        }
+
+        private void NotifyOldParentDirty()
+        {
+            this.isNotifyingParentDirty = true;
+        }
+
+        private void NotifyNewParentDirty()
+        {
+            if (this.transform.parent == null)
+            {
+                return;
+            }
+
+            if (this.transform.parent.TryGetComponent(out UISDFImage image))
+            {
+                image.childrenDirty = true;
             }
         }
     }

@@ -3,8 +3,6 @@ Shader "AillieoUtils/SDFImage"
     Properties
     {
         [PerRendererData] _MainTex("Sprite Texture", 2D) = "white" {}
-        _Color("Tint", Color) = (1, 1, 1, 1)
-        _NumCircles("Number of Circles", Int) = 0
         _Softness("Softness", Range(0, 0.1)) = 0
         _BlendRadius("BlendRadius", Range(0.0001, 1.0)) = 0.1
     }
@@ -27,35 +25,43 @@ Shader "AillieoUtils/SDFImage"
             #define SDFOperation_Union 0
             #define SDFOperation_Intersection 1
             #define SDFOperation_Subtraction 2
+            #define SDFOperation_ShapeBlending 3
 
             struct appdata
             {
                 float4 vertex : POSITION;
                 float2 uv : TEXCOORD0;
+                float4 color: COLOR;
             };
 
             struct v2f
             {
                 float2 uv : TEXCOORD0;
                 float4 vertex : SV_POSITION;
+                fixed4 color: COLOR;
             };
 
-            sampler2D _MainTex; 
+            sampler2D _MainTex;
             float4 _MainTex_ST;
-            float4 _Color;
-            float4 _CircleDataArray[10];
-            int _NumCircles;
+            float4 _SDFDataBuffer[16];
+            int _SDFDataLength;
             float _BlendRadius;
             float _Softness;
 
-            float smoothmin(float a, float b, float k) {
-                float h = max(k - abs(a - b), 0.0f) / k;
-                return min(a, b) - h * h * k * 0.25f;
+            float readFromBuffer(uint index)
+            {
+                uint indexInArray = index / 4;
+                uint indexInVector = index % 4;
+                return _SDFDataBuffer[indexInArray][indexInVector];
             }
 
-            float smoothmax(float a, float b, float k) {
-                float h = max(k - abs(a - b), 0.0f) / k;
-                return max(a, b) + h * h * k * 0.25f;
+            float normalizedDistance(float2 center, float2 p, float2 r)
+            {
+                float dx = center.x - p.x;
+                float dy = center.y - p.y;
+                dx = dx / r.x;
+                dy = dy / r.y;
+                return sqrt(dx * dx + dy * dy);
             }
 
             v2f vert(appdata v)
@@ -63,6 +69,7 @@ Shader "AillieoUtils/SDFImage"
                 v2f o;
                 o.vertex = UnityObjectToClipPos(v.vertex);
                 o.uv = TRANSFORM_TEX(v.uv, _MainTex);
+                o.color = v.color;
                 return o;
             }
 
@@ -71,17 +78,19 @@ Shader "AillieoUtils/SDFImage"
                 float sdf = 0.0;
                 int operation = SDFOperation_Union;
 
-                for (int j = 0; j < _NumCircles; j++)
+                for (int j = 0; j < _SDFDataLength; )
                 {
+                    uint startIndex = j;
+                    
                     // center 
-                    float2 center = _CircleDataArray[j].xy;
+                    float2 center = float2(readFromBuffer(startIndex), readFromBuffer(startIndex + 1));
 
                     // radius
-                    float radius = _CircleDataArray[j].z;
+                    float2 radius = float2(readFromBuffer(startIndex + 2), readFromBuffer(startIndex + 3)) * 0.5f;
 
                     // calculate sdf value
-                    float dist = length(i.uv - center);
-                    float circleSdf = radius - dist;
+                    float dist = normalizedDistance(center, i.uv, radius);
+                    float circleSdf = 1 - dist;
 
                     if (j == 0)
                     {
@@ -89,27 +98,29 @@ Shader "AillieoUtils/SDFImage"
                     }
                     else
                     {
-                        operation = (int)_CircleDataArray[j].w;
+                        operation = (int)readFromBuffer(startIndex + 4);
 
                         switch (operation)
                         {
                         case SDFOperation_Union:
-                            sdf = smoothmax(sdf, circleSdf, _BlendRadius);
+                            sdf = smax(sdf, circleSdf, _BlendRadius);
                             break;
                         case SDFOperation_Intersection:
-                            sdf = smoothmin(sdf, circleSdf, _BlendRadius);
+                            sdf = smin(sdf, circleSdf, _BlendRadius);
                             break;
                         case SDFOperation_Subtraction:
-                            sdf = smoothmin(sdf, -circleSdf, _BlendRadius);
+                            sdf = smin(sdf, -circleSdf, _BlendRadius);
                             break;
                         }
                     }
+                    
+                    j = startIndex + 5;
                 }
 
                 float halfSoft = _Softness * 0.5f;
                 sdf = smoothstep(-halfSoft, halfSoft, sdf);
 
-                float4 col = _Color * sdf;
+                float4 col = i.color * sdf;
                 col *= tex2D(_MainTex, i.uv);
 
                 return col;
