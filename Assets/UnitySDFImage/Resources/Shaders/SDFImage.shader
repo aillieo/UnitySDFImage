@@ -27,6 +27,10 @@ Shader "AillieoUtils/SDFImage"
             #define SDFOperation_Subtraction 2
             #define SDFOperation_ShapeBlending 3
 
+            #define Shape_Circle 0
+            #define Shape_Rect 1
+            #define Shape_RegularPolygon 2
+
             struct appdata
             {
                 float4 vertex : POSITION;
@@ -55,15 +59,6 @@ Shader "AillieoUtils/SDFImage"
                 return _SDFDataBuffer[indexInArray][indexInVector];
             }
 
-            float normalizedDistance(float2 center, float2 p, float2 r)
-            {
-                float dx = center.x - p.x;
-                float dy = center.y - p.y;
-                dx = dx / r.x;
-                dy = dy / r.y;
-                return sqrt(dx * dx + dy * dy);
-            }
-
             v2f vert(appdata v)
             {
                 v2f o;
@@ -73,53 +68,129 @@ Shader "AillieoUtils/SDFImage"
                 return o;
             }
 
+            float sdfCircle(float2 pt, inout uint index)
+            {
+                float2 center = float2(readFromBuffer(index++), readFromBuffer(index++));
+
+                float2 radius = float2(readFromBuffer(index++), readFromBuffer(index++)) * 0.5f;
+
+                float dx = center.x - pt.x;
+                float dy = center.y - pt.y;
+                dx = dx / radius.x;
+                dy = dy / radius.y;
+                float normalizedDistance = sqrt(dx * dx + dy * dy);
+                return 1 - normalizedDistance;
+            }
+            
+            float sdfRect(float2 pt, inout uint index)
+            {
+                float2 center = float2(readFromBuffer(index++), readFromBuffer(index++));
+
+                float2 sizeHalf = float2(readFromBuffer(index++), readFromBuffer(index++)) * 0.5f;
+
+                float dx = center.x - pt.x;
+                float dy = center.y - pt.y;
+                dx = dx / sizeHalf.x;
+                dy = dy / sizeHalf.y;
+
+                float2 normalizedDistance = float2(abs(dx) - 0.5, abs(dy) - 0.5);
+
+                float dist = max(max(normalizedDistance.x, normalizedDistance.y), 0);
+                return 0.5 - dist;
+            }
+            
+            float sdfRegularPolygon(float2 pt, inout uint index)
+            {
+                float2 center = float2(readFromBuffer(index++), readFromBuffer(index++));
+                    
+                float2 sizeHalf = float2(readFromBuffer(index++), readFromBuffer(index++)) * 0.5f;
+                int n = (int)readFromBuffer(index++);
+                float startAngle = readFromBuffer(index++);
+
+                float dx = pt.x - center.x;
+                float dy = pt.y - center.y;
+                dx = dx / sizeHalf.x;
+                dy = dy / sizeHalf.y;
+
+                float2 pointLocal = float2(dx, dy);
+
+                float angle = 2 * PI / n;
+                float halfAngle = angle / 2;
+                float cosHalfAngle = cos(halfAngle);
+                float sinHalfAngle = sin(halfAngle);
+                
+                float radius = cosHalfAngle / (1.0f + cosHalfAngle);
+                
+                float pointAngle = atan2(pointLocal.y, pointLocal.x) - startAngle;
+                if (pointAngle < 0)
+                {
+                    pointAngle += 2 * PI;
+                }
+                
+                int closestEdgeIndex = (int)floor(pointAngle / angle);
+                
+                float angleEdge = closestEdgeIndex * angle + startAngle;
+                float2 pointEdge = float2(radius * cos(angleEdge), radius * sin(angleEdge));
+                float angleNextEdge = (closestEdgeIndex + 1) * angle + startAngle;
+                float2 pointNextEdge = float2(radius * cos(angleNextEdge), radius * sin(angleNextEdge));
+                
+                float distToSegment = distanceToLine(pointLocal,pointEdge,pointNextEdge );
+                
+                return radius - distToSegment;
+            }
+
             fixed4 frag(v2f i) : SV_Target
             {
-                float sdf = 0.0;
+                float sdf = 0;
+                float sdfTemp = 0;
                 int operation = SDFOperation_Union;
+                int shape = Shape_Circle;
 
                 for (int j = 0; j < _SDFDataLength; )
                 {
-                    uint startIndex = j;
-                    
-                    // center 
-                    float2 center = float2(readFromBuffer(startIndex), readFromBuffer(startIndex + 1));
+                    bool first = j == 0;
+                
+                    shape = (int)readFromBuffer(j++);
 
-                    // radius
-                    float2 radius = float2(readFromBuffer(startIndex + 2), readFromBuffer(startIndex + 3)) * 0.5f;
-
-                    // calculate sdf value
-                    float dist = normalizedDistance(center, i.uv, radius);
-                    float circleSdf = 1 - dist;
-
-                    if (j == 0)
+                    switch (shape)
                     {
-                        sdf = circleSdf;
+                    case Shape_Circle:
+                        sdfTemp = sdfCircle(i.uv, j);
+                        break;
+                    case Shape_Rect:
+                        sdfTemp = sdfRect(i.uv, j);
+                        break;
+                    case Shape_RegularPolygon:
+                        sdfTemp = sdfRegularPolygon(i.uv, j);
+                        break;
+                    }
+
+                    operation = (int)readFromBuffer(j++);
+                
+                    if (first)
+                    {
+                        sdf = sdfTemp;
                     }
                     else
                     {
-                        operation = (int)readFromBuffer(startIndex + 4);
-
                         switch (operation)
                         {
                         case SDFOperation_Union:
-                            sdf = smax(sdf, circleSdf, _BlendRadius);
+                            sdf = smax(sdf, sdfTemp, _BlendRadius);
                             break;
                         case SDFOperation_Intersection:
-                            sdf = smin(sdf, circleSdf, _BlendRadius);
+                            sdf = smin(sdf, sdfTemp, _BlendRadius);
                             break;
                         case SDFOperation_Subtraction:
-                            sdf = smin(sdf, -circleSdf, _BlendRadius);
+                            sdf = smin(sdf, -sdfTemp, _BlendRadius);
                             break;
                         }
                     }
-                    
-                    j = startIndex + 5;
                 }
 
                 float halfSoft = _Softness * 0.5f;
                 sdf = smoothstep(-halfSoft, halfSoft, sdf);
-
+                                
                 float4 col = i.color * sdf;
                 col *= tex2D(_MainTex, i.uv);
 
