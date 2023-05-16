@@ -8,9 +8,11 @@ namespace AillieoUtils.UI.SDFImage
     [RequireComponent(typeof(RectTransform))]
     public class UISDFElement : MonoBehaviour
     {
-        public SDFOperation operation;
+        private const float angleOffset = Mathf.PI / 2f;
 
         public Shape shape;
+
+        public SDFOperation operation;
 
         internal bool isNotifyingParentDirty;
 
@@ -18,7 +20,10 @@ namespace AillieoUtils.UI.SDFImage
         public int n = 3;
 
         [Range(0, Mathf.PI)]
-        public float startAngle = Mathf.PI / 2f;
+        public float startAngle;
+
+        [Range(0, 1)]
+        public float blendFactor;
 
         public enum SDFOperation
         {
@@ -69,13 +74,24 @@ namespace AillieoUtils.UI.SDFImage
                     buffer.Add(bounds.size.x);
                     buffer.Add(bounds.size.y);
                     buffer.Add(this.n);
-                    buffer.Add(this.startAngle);
+                    buffer.Add(this.startAngle + angleOffset);
                     break;
                 default:
                     throw new NotImplementedException();
             }
 
             buffer.Add((int)this.operation);
+
+            switch (this.operation)
+            {
+                case SDFOperation.Union:
+                case SDFOperation.Intersection:
+                case SDFOperation.Subtraction:
+                    break;
+                case SDFOperation.ShapeBlending:
+                    buffer.Add(this.blendFactor);
+                    break;
+            }
         }
 
         private void OnTransformParentChanged()

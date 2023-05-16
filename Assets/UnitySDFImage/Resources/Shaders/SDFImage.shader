@@ -3,8 +3,8 @@ Shader "AillieoUtils/SDFImage"
     Properties
     {
         [PerRendererData] _MainTex("Sprite Texture", 2D) = "white" {}
-        _Softness("Softness", Range(0, 0.1)) = 0
         _BlendRadius("BlendRadius", Range(0.0001, 1.0)) = 0.1
+        _Softness("Softness", Range(0, 0.1)) = 0
     }
 
     SubShader
@@ -170,6 +170,11 @@ Shader "AillieoUtils/SDFImage"
                     if (first)
                     {
                         sdf = sdfTemp;
+
+                        if (operation == SDFOperation_ShapeBlending)
+                        {
+                            j++;
+                        }
                     }
                     else
                     {
@@ -183,6 +188,10 @@ Shader "AillieoUtils/SDFImage"
                             break;
                         case SDFOperation_Subtraction:
                             sdf = smin(sdf, -sdfTemp, _BlendRadius);
+                            break;
+                        case SDFOperation_ShapeBlending:
+                            float factor = readFromBuffer(j++);
+                            sdf = (1 - factor) * sdf + factor * sdfTemp;
                             break;
                         }
                     }

@@ -21,14 +21,50 @@ namespace AillieoUtils.UI.SDFImage
         private readonly List<float> rawSDFDataBuffer = new List<float>();
 
         [SerializeField]
+        [HideInInspector]
+        private Texture textureValue;
+
+        [SerializeField]
+        [HideInInspector]
         [Range(0.0001f, 1.0f)]
         private float blendRadiusValue = 0.1f;
 
-        private Material materialSDFImage;
-
         [SerializeField]
+        [HideInInspector]
         [Range(0, 0.1f)]
         private float softnessValue;
+
+        private Material materialSDFImage;
+
+        public Texture texture
+        {
+            get
+            {
+                return textureValue;
+            }
+
+            set
+            {
+                textureValue = value;
+            }
+        }
+
+        public override Texture mainTexture
+        {
+            get
+            {
+                if (textureValue == null)
+                {
+                    if (material != null && material.mainTexture != null)
+                    {
+                        return material.mainTexture;
+                    }
+                    return s_WhiteTexture;
+                }
+
+                return textureValue;
+            }
+        }
 
         public static Shader sdfImageShader
         {
@@ -146,19 +182,26 @@ namespace AillieoUtils.UI.SDFImage
         {
             var willSetMaterialDirty = false;
 
-            foreach (UISDFElement child in this.managedChildren)
+            if (this.childrenDirty)
             {
-                if (child.isNotifyingParentDirty)
+                willSetMaterialDirty = true;
+            }
+            else
+            {
+                foreach (UISDFElement child in this.managedChildren)
                 {
-                    this.childrenDirty = true;
-                    willSetMaterialDirty = true;
-                }
+                    if (child.isNotifyingParentDirty)
+                    {
+                        this.childrenDirty = true;
+                        willSetMaterialDirty = true;
+                    }
 
-                child.isNotifyingParentDirty = false;
+                    child.isNotifyingParentDirty = false;
 
-                if (child.transform.hasChanged)
-                {
-                    willSetMaterialDirty = true;
+                    if (child.transform.hasChanged)
+                    {
+                        willSetMaterialDirty = true;
+                    }
                 }
             }
 
